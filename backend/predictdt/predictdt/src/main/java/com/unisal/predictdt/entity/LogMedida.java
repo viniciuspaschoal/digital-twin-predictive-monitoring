@@ -6,8 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
-
 @Entity
 @Getter
 @Setter
@@ -16,9 +14,8 @@ import java.time.LocalDateTime;
 @Table(name = "log_medida")
 public class LogMedida {
 
-    @Id
-    @Column(name = "dt_medida", updatable = false)
-    private LocalDateTime dtMedida;
+    @EmbeddedId
+    private LogMedidaId id;
 
     @ManyToOne
     @JoinColumn(name = "sensor_id", nullable = false)
