@@ -1,6 +1,5 @@
-package com.unisal.predictdt.domain.log_medida;
+package com.unisal.predictdt.entity;
 
-import com.unisal.predictdt.domain.sensor.Sensor;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;

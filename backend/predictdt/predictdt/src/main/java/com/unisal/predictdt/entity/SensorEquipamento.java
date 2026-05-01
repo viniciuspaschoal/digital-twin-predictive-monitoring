@@ -1,4 +1,4 @@
-package com.unisal.predictdt.domain.equipamento;
+package com.unisal.predictdt.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -14,26 +14,22 @@ import java.util.UUID;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "equipamento")
-public class Equipamento {
+@Table(name = "sensor_equipamento")
+public class SensorEquipamento {
 
     @Id
     @GeneratedValue
     @Column(name = "id", updatable = false)
     private UUID id;
 
-    @Column(name = "descricao", nullable = false, length = 100)
-    private String descricao;
+    @ManyToOne
+    @JoinColumn(name = "sensor_id", nullable = false)
+    private Sensor sensor;
 
-    @Column(name = "ativo", nullable = false)
-    private Boolean ativo;
+    @ManyToOne
+    @JoinColumn(name = "equipamento_id", nullable = false)
+    private Equipamento equipamento;
 
     @Column(name = "dt_inclusao", nullable = false)
     private LocalDateTime dtInclusao;
-
-    @Column(name = "dt_bloqueio")
-    private LocalDateTime dtBloqueio;
-
-    @Column(name = "dt_alteracao", nullable = false)
-    private LocalDateTime dtAlteracao;
 }

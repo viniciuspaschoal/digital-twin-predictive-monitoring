@@ -1,4 +1,4 @@
-package com.unisal.predictdt.domain.topico_mqtt;
+package com.unisal.predictdt.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -14,8 +14,8 @@ import java.util.UUID;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name = "topico_mqtt")
-public class TopicoMqtt {
+@Table(name = "sensor")
+public class Sensor {
 
     @Id
     @GeneratedValue
@@ -25,8 +25,18 @@ public class TopicoMqtt {
     @Column(name = "descricao", nullable = false, length = 100)
     private String descricao;
 
+    @Column(name = "unidade_medida", length = 30)
+    private String unidadeMedida;
+
     @Column(name = "ativo", nullable = false)
     private Boolean ativo;
+
+    @ManyToOne
+    @JoinColumn(name = "topico_id")
+    private TopicoMqtt topico;
+
+    @Column(name = "topico_auxiliar", length = 100)
+    private String topicoAuxiliar;
 
     @Column(name = "dt_inclusao", nullable = false)
     private LocalDateTime dtInclusao;
