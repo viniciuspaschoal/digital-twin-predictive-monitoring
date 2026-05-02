@@ -7,9 +7,14 @@ import com.unisal.predictdt.exception.BusinessException;
 import com.unisal.predictdt.mapper.TopicoMqttMapper;
 import com.unisal.predictdt.repository.TopicoMqttRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -47,5 +52,23 @@ public class TopicoMqttService {
 
         TopicoMqtt saved = repository.save(entity);
         return TopicoMqttMapper.toResponse(saved);
+    }
+
+    public Page<TopicoMqttResponseDTO> getTopicosMqtt (int page, int size){
+        Pageable pageable = PageRequest.of(page, size);
+        Page<TopicoMqtt> result = repository.findAll(pageable);
+
+        if (result.isEmpty()) {
+            throw new BusinessException(HttpStatus.NO_CONTENT, "Nenhum tópico MQTT cadastrado");
+        }
+
+        return result.map(TopicoMqttMapper::toResponse);
+    }
+
+    public TopicoMqttResponseDTO getTopicosMqttById(UUID id){
+        TopicoMqtt result = repository.findById(id)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Tópico MQTT não encontrado"));
+
+        return TopicoMqttMapper.toResponse(result);
     }
 }
