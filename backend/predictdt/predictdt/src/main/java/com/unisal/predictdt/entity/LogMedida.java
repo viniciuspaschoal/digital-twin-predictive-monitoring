@@ -18,7 +18,7 @@ public class LogMedida {
     private LogMedidaId id;
 
     @ManyToOne
-    @JoinColumn(name = "sensor_id", nullable = false)
+    @JoinColumn(name = "sensor_id", nullable = false, insertable = false, updatable = false)
     private Sensor sensor;
 
     @Column(name = "medida", nullable = false)

@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -18,7 +20,7 @@ import java.util.UUID;
 public class Equipamento {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false)
     private UUID id;
 
@@ -28,12 +30,13 @@ public class Equipamento {
     @Column(name = "ativo", nullable = false)
     private Boolean ativo;
 
-    @Column(name = "dt_inclusao", nullable = false)
+    @Generated(event = EventType.INSERT)
+    @Column(name = "dt_inclusao", nullable = false, insertable = false, updatable = false)
     private LocalDateTime dtInclusao;
 
     @Column(name = "dt_bloqueio")
     private LocalDateTime dtBloqueio;
 
-    @Column(name = "dt_alteracao", nullable = false)
+    @Column(name = "dt_alteracao", nullable = false, insertable = false)
     private LocalDateTime dtAlteracao;
 }
