@@ -1,13 +1,10 @@
-package com.unisal.predictdt.domain.log_medida;
+package com.unisal.predictdt.entity;
 
-import com.unisal.predictdt.domain.sensor.Sensor;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -17,12 +14,11 @@ import java.time.LocalDateTime;
 @Table(name = "log_medida")
 public class LogMedida {
 
-    @Id
-    @Column(name = "dt_medida", updatable = false)
-    private LocalDateTime dtMedida;
+    @EmbeddedId
+    private LogMedidaId id;
 
     @ManyToOne
-    @JoinColumn(name = "sensor_id", nullable = false)
+    @JoinColumn(name = "sensor_id", nullable = false, insertable = false, updatable = false)
     private Sensor sensor;
 
     @Column(name = "medida", nullable = false)

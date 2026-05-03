@@ -1,12 +1,12 @@
-package com.unisal.predictdt.domain.sensor_equipamento;
+package com.unisal.predictdt.entity;
 
-import com.unisal.predictdt.domain.equipamento.Equipamento;
-import com.unisal.predictdt.domain.sensor.Sensor;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -20,7 +20,7 @@ import java.util.UUID;
 public class SensorEquipamento {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false)
     private UUID id;
 
@@ -32,6 +32,7 @@ public class SensorEquipamento {
     @JoinColumn(name = "equipamento_id", nullable = false)
     private Equipamento equipamento;
 
-    @Column(name = "dt_inclusao", nullable = false)
+    @Generated(event = EventType.INSERT)
+    @Column(name = "dt_inclusao", nullable = false, insertable = false, updatable = false)
     private LocalDateTime dtInclusao;
 }
