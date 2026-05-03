@@ -2,6 +2,7 @@ package com.unisal.predictdt.controller;
 
 import com.unisal.predictdt.dto.topico_mqtt.TopicoMqttRequestDTO;
 import com.unisal.predictdt.dto.topico_mqtt.TopicoMqttResponseDTO;
+import com.unisal.predictdt.dto.topico_mqtt.TopicoMqttUpdateDTO;
 import com.unisal.predictdt.service.TopicoMqttService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -38,7 +38,22 @@ public class TopicoMqttController {
 
     // Buscando TopicoMqtt por ID
     @GetMapping("/{id}")
-    public ResponseEntity<TopicoMqttResponseDTO> getTopicosMqttById(@PathVariable UUID id) {
-            return ResponseEntity.ok(service.getTopicosMqttById(id));
-        }
+    public ResponseEntity<TopicoMqttResponseDTO> getTopicoMqttById(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.getTopicoMqttById(id));
+    }
+
+    // Altera TopicoMqtt por ID
+    @PutMapping("/{id}")
+    public ResponseEntity<TopicoMqttResponseDTO> putTopicoMqtt(
+            @PathVariable UUID id,
+            @RequestBody @Valid TopicoMqttUpdateDTO dto) {
+        return ResponseEntity.ok(service.putTopicoMqtt(id, dto));
+    }
+
+    // Delete TopicoMqtt
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deletarTopicoMqtt(@PathVariable UUID id) {
+        service.deletarTopicoMqtt(id);
+        return ResponseEntity.ok("Tópico MQTT deletado com sucesso");
+    }
 }
