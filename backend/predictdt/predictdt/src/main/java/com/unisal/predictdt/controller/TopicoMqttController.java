@@ -23,8 +23,7 @@ public class TopicoMqttController {
     // Cadastrando TopicoMqtt
     @PostMapping
     public ResponseEntity<TopicoMqttResponseDTO> criar(@RequestBody @Valid TopicoMqttRequestDTO dto) {
-        TopicoMqttResponseDTO response = service.criarTopicoMqtt(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.criarTopicoMqtt(dto));
     }
 
     // Buscando tudo da tabela TopicoMqtt
@@ -32,8 +31,7 @@ public class TopicoMqttController {
     public ResponseEntity<Page<TopicoMqttResponseDTO>> getTopicosMqtt(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<TopicoMqttResponseDTO> response = service.getTopicosMqtt(page, size);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(service.getTopicosMqtt(page, size));
     }
 
     // Buscando TopicoMqtt por ID
