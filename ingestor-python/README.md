@@ -1,23 +1,28 @@
-# 🐍 Ingestor e Gateway Digital Twin (Python)
+# PredictDT - Python Gateway 🐍
 
-Este módulo atua como o **Gateway de Borda** do projeto Digital Twin. Ele é responsável por realizar a ponte entre o hardware físico (ESP32 via MQTT) e a interface de visualização (Dashboard via WebSockets), garantindo a integridade e a eficiência no fluxo de dados.
+Este componente atua como o **Middleware** do sistema, realizando a orquestração entre a Camada de Borda (MQTT) e a Camada de Persistência (Java/Spring Boot).
 
 ## 🚀 Funcionalidades
-* **Ingestão Assíncrona:** Gerenciamento de mensagens MQTT sem bloqueio de thread.
-* **Servidor WebSocket:** Transmissão em tempo real (Full-Duplex) para múltiplos dashboards.
-* **Data Throttling (ODS 12):** Filtro de ruído e mudanças irrelevantes para otimizar o tráfego de rede e o futuro processamento em banco de dados.
-* **Multithreading:** Operação simultânea de protocolos de rede distintos (Pilar de Sistemas Operacionais).
+- **Subscriber MQTT:** Escuta todos os tópicos da bomba no broker HiveMQ.
+- **WebSocket Server:** Realiza o broadcast dos dados para o Frontend (Lovable) em tempo real.
+- **REST Client:** Realiza o POST das medidas para o endpoint `/log-medida` do backend Java.
+- **Data Buffering:** Mantém o último estado conhecido de cada sensor para postagens agendadas.
 
-## 🛠️ O Arquivo: `buscador.py`
-O script principal utiliza a biblioteca `asyncio` para orquestrar duas tarefas críticas:
+## 🧠 Inteligência de Dados
+O gateway utiliza um algoritmo de filtragem para decidir o que deve ser persistido:
+- **Mudança Brusca:** Se a vazão ou temperatura variar significativamente, o dado é salvo na hora.
+- **Snapshot:** Se o sistema estiver estável, um registro é salvo a cada 5 minutos para auditoria.
+- **Status:** Sensores de nível e pressão (0/1) têm prioridade máxima de postagem em qualquer mudança.
 
-1.  **Callback MQTT (`on_message`):** Atua como o "porteiro". Ele recebe o JSON do ESP32, valida os campos e decide se o dado é relevante para ser transmitido (Throttling).
-2.  **Broadcast WebSocket (`broadcast_ws`):** Quando um dado válido chega, o script o "empurra" para todos os clientes conectados na porta `8765`, eliminando a necessidade de requisições HTTP constantes.
+## 🛠️ Requisitos
+- Python 3.13+
+- Bibliotecas: `paho-mqtt`, `websockets`, `requests`
 
-## 📦 Dependências e Instalação (`requirements.txt`)
-Para garantir a portabilidade do projeto (Pilar de Engenharia de Software), utilizamos o arquivo `requirements.txt`. Ele lista todas as bibliotecas necessárias para rodar o gateway.
+## 📊 Fluxo de Dados
+1. O Robô inicia e busca a lista de sensores ativos no Java.
+2. Ao receber um dado MQTT, ele atualiza o buffer interno.
+3. Envia o dado via WebSocket para quem estiver conectado (Dashboard).
+4. A cada 5 minutos, consolida e envia todos os dados para o Java salvar no PostgreSQL.
 
-### Como instalar as dependências:
-Abra o terminal na pasta deste módulo e execute:
-```bash
-pip install -r requirements.txt
+---
+**Status da Fase 1: Estabilidade de Ingestão Validada**
