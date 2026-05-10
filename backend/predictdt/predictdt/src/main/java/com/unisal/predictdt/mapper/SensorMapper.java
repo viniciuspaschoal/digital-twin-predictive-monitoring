@@ -36,7 +36,7 @@ public class SensorMapper {
         // Lógica de concatenação dos tópicos
         String prefixo = (sensor.getTopico() != null) ? sensor.getTopico().getDescricao() : "";
         String sufixo = (sensor.getTopicoAuxiliar() != null) ? sensor.getTopicoAuxiliar() : "";
-        String topicoCompleto = prefixo + sufixo;
+        String topicoCompleto = prefixo + "/" + sufixo;
 
         return new SensorResponseDTO(
                 sensor.getId(),
