@@ -1,5 +1,6 @@
 package com.unisal.predictdt.entity;
 
+import com.unisal.predictdt.entity.enums.TipoRelacaoSensorEquipamento;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -35,4 +36,15 @@ public class SensorEquipamento {
     @Generated(event = EventType.INSERT)
     @Column(name = "dt_inclusao", nullable = false, insertable = false, updatable = false)
     private LocalDateTime dtInclusao;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_relacao", nullable = false)
+    private TipoRelacaoSensorEquipamento tipoRelacao;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.tipoRelacao == null) {
+            this.tipoRelacao = TipoRelacaoSensorEquipamento.DIRETO;
+        }
+    }
 }

@@ -31,6 +31,10 @@ public class Sensor {
     @Column(name = "unidade_medida", length = 30)
     private String unidadeMedida;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "grandeza_medida_id")
+    private GrandezaMedida grandezaMedida;
+
     @Column(name = "ativo", nullable = false)
     private Boolean ativo;
 
