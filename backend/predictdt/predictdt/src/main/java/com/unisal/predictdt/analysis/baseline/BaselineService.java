@@ -205,18 +205,23 @@ public class BaselineService {
 
         if (mediaDentroDoPadraoAtual) {
             /*
-             * Quando o novo baseline é compatível com o padrão anterior,
-             * o baseline antigo deixa de ser o oficial e passa a ser histórico.
+             * Primeiro desativa o baseline antigo.
+             *
+             * O saveAndFlush é importante aqui porque existe uma constraint no banco
+             * permitindo apenas um baseline ativo por sensor e tipo de janela.
+             *
+             * Sem o flush, o Hibernate pode tentar inserir o novo baseline ativo
+             * antes de enviar o UPDATE que desativa o baseline anterior.
              */
             baselineAtivo.setAtivo(false);
             baselineAtivo.setStatus(StatusBaseline.HISTORICO);
             baselineAtivo.setMotivoStatus("Substituído por um novo baseline compatível com o padrão anterior.");
 
-            sensorBaselineRepository.save(baselineAtivo);
+            sensorBaselineRepository.saveAndFlush(baselineAtivo);
 
             /*
-             * O novo baseline é promovido para ATIVO e passa a ser usado
-             * pela detecção de anomalias.
+             * Depois que o banco já sabe que o baseline anterior não está mais ativo,
+             * o novo baseline pode ser promovido para ATIVO com segurança.
              */
             novoBaseline.setAtivo(true);
             novoBaseline.setStatus(StatusBaseline.ATIVO);
