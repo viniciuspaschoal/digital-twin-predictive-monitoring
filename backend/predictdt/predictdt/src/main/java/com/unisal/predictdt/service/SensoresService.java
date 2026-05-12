@@ -3,10 +3,12 @@ package com.unisal.predictdt.service;
 import com.unisal.predictdt.dto.sensor.SensorRequestDTO;
 import com.unisal.predictdt.dto.sensor.SensorResponseDTO;
 import com.unisal.predictdt.dto.sensor.SensorUpdateDTO;
+import com.unisal.predictdt.entity.GrandezaMedida;
 import com.unisal.predictdt.entity.Sensor;
 import com.unisal.predictdt.entity.TopicoMqtt;
 import com.unisal.predictdt.exception.BusinessException;
 import com.unisal.predictdt.mapper.SensorMapper;
+import com.unisal.predictdt.repository.GrandezaMedidaRepository;
 import com.unisal.predictdt.repository.SensorRepository;
 import com.unisal.predictdt.repository.TopicoMqttRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,30 +27,58 @@ public class SensoresService {
 
     private final SensorRepository sensorRepository;
     private final TopicoMqttRepository topicoMqttRepository;
+    private final GrandezaMedidaRepository grandezaMedidaRepository;
 
     // Cadastrando Sensor
     public SensorResponseDTO criarSensor(SensorRequestDTO dto) {
         String descricao = limparDescricao(dto.descricao());
         validarDescricao(descricao);
 
-        // Busca o tópico base usando o ID que veio no DTO
+        /*
+         * Busca o tópico base usando o ID recebido no DTO.
+         *
+         * O tópico é necessário para compor o caminho MQTT completo
+         * utilizado pelo coletor/Python.
+         */
         TopicoMqtt topico = topicoMqttRepository.findById(dto.topicoId())
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Tópico base não encontrado"));
 
-        // Converte DTO + Tópico em Entity
-        Sensor entity = SensorMapper.toEntity(dto, topico);
-        entity.setDescricao(descricao);
-        entity.setAtivo(true); // Garante que nasce ativo
+        /*
+         * Busca a grandeza física do sensor, quando informada.
+         *
+         * O campo é opcional por enquanto para manter compatibilidade
+         * com sensores antigos. Quando preenchido, permite que o sistema
+         * entenda tecnicamente o significado da medição.
+         */
+        GrandezaMedida grandezaMedida = buscarGrandezaMedidaOpcional(dto.grandezaMedidaId());
 
-        //Salva
+        /*
+         * A unidade efetiva continua vindo do usuário.
+         *
+         * Caso o usuário não informe unidade e a grandeza possua unidade padrão,
+         * usamos a unidade padrão como fallback para evitar sensor sem unidade.
+         */
+        String unidadeMedida = dto.unidadeMedida();
+
+        if ((unidadeMedida == null || unidadeMedida.isBlank()) && grandezaMedida != null) {
+            unidadeMedida = grandezaMedida.getUnidadePadrao();
+        }
+
+        /*
+         * Converte DTO + tópico + grandeza em Entity.
+         */
+        Sensor entity = SensorMapper.toEntity(dto, topico, grandezaMedida);
+        entity.setDescricao(descricao);
+        entity.setUnidadeMedida(unidadeMedida);
+        entity.setAtivo(true);
+
         Sensor saved = sensorRepository.save(entity);
 
-        // Converte de volta para Response (Aqui o nome deve ser toResponse)
         return SensorMapper.toResponse(saved);
     }
 
-    // 2. Listar Sensores com Paginação
-    public Page<SensorResponseDTO> getSensores(int page, int size){
+    // Listar Sensores com Paginação
+    public Page<SensorResponseDTO> getSensores(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<Sensor> result = sensorRepository.findAll(pageable);
 
@@ -59,66 +89,103 @@ public class SensoresService {
         return result.map(SensorMapper::toResponse);
     }
 
-    // 3. Buscar Sensor por ID
-    public SensorResponseDTO getSensorById(UUID id){
+    // Buscar Sensor por ID
+    public SensorResponseDTO getSensorById(UUID id) {
         Sensor entity = buscarSensorPorId(id);
 
         return SensorMapper.toResponse(entity);
     }
 
-    // 4. Atualizar
+    // Atualizar Sensor por ID
     public SensorResponseDTO putSensorByID(UUID id, SensorUpdateDTO dto) {
-        Sensor entity = buscarSensorPorId(id); // Usa aquele método auxiliar que já temos
+        Sensor entity = buscarSensorPorId(id);
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. Atualiza descrição se fornecida e limpa
+        /*
+         * Atualiza descrição quando fornecida.
+         */
         if (dto.descricao() != null && !dto.descricao().equals(entity.getDescricao())) {
             String descricao = limparDescricao(dto.descricao());
             validarDescricao(descricao);
             entity.setDescricao(descricao);
         }
 
-        // 2. Atualiza unidade de medida
+        /*
+         * Atualiza unidade efetiva usada pelo sensor.
+         */
         if (dto.unidadeMedida() != null) {
             entity.setUnidadeMedida(dto.unidadeMedida());
         }
 
-        // 3. Atualiza tópico auxiliar
+        /*
+         * Atualiza tópico auxiliar usado para compor o tópico MQTT completo.
+         */
         if (dto.topicoAuxiliar() != null) {
             entity.setTopicoAuxiliar(dto.topicoAuxiliar());
         }
 
-        // 4. Atualiza status e gerencia data de bloqueio (Igual ao equipamento!)
+        /*
+         * Atualiza a grandeza física associada ao sensor.
+         *
+         * Quando enviada, a grandeza é validada contra a tabela grandeza_medida.
+         */
+        if (dto.grandezaMedidaId() != null) {
+            GrandezaMedida grandezaMedida = grandezaMedidaRepository.findById(dto.grandezaMedidaId())
+                    .orElseThrow(() -> new BusinessException(
+                            HttpStatus.NOT_FOUND,
+                            "Grandeza de medida não encontrada"
+                    ));
+
+            entity.setGrandezaMedida(grandezaMedida);
+        }
+
+        /*
+         * Atualiza status e gerencia data de bloqueio.
+         */
         if (dto.ativo() != null && !dto.ativo().equals(entity.getAtivo())) {
             entity.setAtivo(dto.ativo());
             entity.setDtBloqueio(!dto.ativo() ? now : null);
         }
 
         entity.setDtAlteracao(now);
+
         Sensor saved = sensorRepository.save(entity);
         return SensorMapper.toResponse(saved);
     }
 
-    // 5. Deletar Sensor
-    public void deletarSensor(UUID id){
+    // Deletar Sensor
+    public void deletarSensor(UUID id) {
         Sensor entity = buscarSensorPorId(id);
         sensorRepository.delete(entity);
     }
 
-
     // --- MÉTODOS AUXILIARES ---
 
-    private Sensor buscarSensorPorId(UUID id){
+    private Sensor buscarSensorPorId(UUID id) {
         return sensorRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Sensor não encontrado"));
     }
 
-    private String limparDescricao(String descricao){
+    private GrandezaMedida buscarGrandezaMedidaOpcional(UUID grandezaMedidaId) {
+        if (grandezaMedidaId == null) {
+            return null;
+        }
+
+        return grandezaMedidaRepository.findById(grandezaMedidaId)
+                .orElseThrow(() -> new BusinessException(
+                        HttpStatus.NOT_FOUND,
+                        "Grandeza de medida não encontrada"
+                ));
+    }
+
+    private String limparDescricao(String descricao) {
         return (descricao != null) ? descricao.toLowerCase().trim() : "";
     }
 
     private void validarDescricao(String descricao) {
-        // Permite letras, números, espaços, hífens e underlines
+        /*
+         * Permite letras, números, espaços, hífens, underlines e barra.
+         */
         if (descricao == null || !descricao.matches("[a-zA-Z0-9À-ÿ/\\-_\\s]+")) {
             throw new BusinessException("A descrição contém caracteres especiais não permitidos.");
         }

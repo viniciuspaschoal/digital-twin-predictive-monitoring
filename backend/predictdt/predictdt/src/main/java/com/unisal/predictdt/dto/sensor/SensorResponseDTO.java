@@ -8,7 +8,19 @@ public record SensorResponseDTO(
         String descricao,
         String unidadeMedida,
         Boolean ativo,
-        String topicoCompleto, // Vamos montar isso no Mapper (Prefixo + Auxiliar)
+        String topicoCompleto,
+
+        /*
+         * Dados estruturados da grandeza física associada ao sensor.
+         *
+         * Esses campos permitem que o frontend exiba o contexto técnico
+         * e que a IA saiba o significado da medição.
+         */
+        UUID grandezaMedidaId,
+        String grandezaMedidaDescricao,
+        String grandezaMedidaUnidadePadrao,
+
         LocalDateTime dtInclusao,
         LocalDateTime dtBloqueio
-) {}
+) {
+}
