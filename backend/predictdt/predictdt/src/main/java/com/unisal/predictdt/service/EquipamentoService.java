@@ -4,9 +4,11 @@ import com.unisal.predictdt.dto.equipamento.EquipamentoRequestDTO;
 import com.unisal.predictdt.dto.equipamento.EquipamentoResponseDTO;
 import com.unisal.predictdt.dto.equipamento.EquipamentoUpdateDTO;
 import com.unisal.predictdt.entity.Equipamento;
+import com.unisal.predictdt.entity.TipoEquipamento;
 import com.unisal.predictdt.exception.BusinessException;
 import com.unisal.predictdt.mapper.EquipamentoMapper;
 import com.unisal.predictdt.repository.EquipamentoRepository;
+import com.unisal.predictdt.repository.TipoEquipamentoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -22,21 +24,41 @@ import java.util.UUID;
 public class EquipamentoService {
 
     private final EquipamentoRepository repository;
+    private final TipoEquipamentoRepository tipoEquipamentoRepository;
 
     // Cadastrando Equipamento
     public EquipamentoResponseDTO criarEquipamento(EquipamentoRequestDTO dto) {
         String descricao = limparDescricao(dto.descricao());
         validarDescricao(descricao);
 
-        // Valida duplicidade
+        /*
+         * Valida duplicidade pela descrição normalizada.
+         *
+         * Isso evita cadastrar dois equipamentos com o mesmo nome lógico.
+         */
         if (repository.findByDescricao(descricao).isPresent()) {
             throw new BusinessException("Descrição já cadastrada");
         }
 
-        Equipamento entity = EquipamentoMapper.toEntity(dto);
+        /*
+         * Busca o tipo operacional do equipamento, quando informado.
+         *
+         * O tipo é opcional neste momento para não quebrar cadastros antigos.
+         * Quando informado, ele dá contexto técnico ao equipamento para uso
+         * posterior nos alertas e na IA generativa.
+         */
+        TipoEquipamento tipoEquipamento = buscarTipoEquipamentoOpcional(dto.tipoEquipamentoId());
+
+        /*
+         * Converte o DTO em entity já com o contexto operacional.
+         */
+        Equipamento entity = EquipamentoMapper.toEntity(dto, tipoEquipamento);
         entity.setDescricao(descricao);
 
-        // Se inativo, registra data de bloqueio
+        /*
+         * Se o equipamento for cadastrado como inativo,
+         * registra a data de bloqueio imediatamente.
+         */
         if (dto.ativo() != null && !dto.ativo()) {
             entity.setDtBloqueio(LocalDateTime.now());
         }
@@ -68,7 +90,12 @@ public class EquipamentoService {
         Equipamento entity = buscarEquipamentoPorId(id);
         LocalDateTime now = LocalDateTime.now();
 
-        // Se nada mudou, retorna sem processar
+        /*
+         * Neste momento, o update continua alterando apenas descrição e status.
+         *
+         * A alteração de tipoEquipamento pode ser adicionada depois no
+         * EquipamentoUpdateDTO para manter esta etapa mais segura e incremental.
+         */
         if ((dto.descricao() == null || dto.descricao().equals(entity.getDescricao())) &&
                 (dto.ativo() == null || dto.ativo().equals(entity.getAtivo()))) {
             return EquipamentoMapper.toResponse(entity);
@@ -108,6 +135,18 @@ public class EquipamentoService {
     private Equipamento buscarEquipamentoPorId(UUID id) {
         return repository.findById(id)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Equipamento não encontrado"));
+    }
+
+    private TipoEquipamento buscarTipoEquipamentoOpcional(UUID tipoEquipamentoId) {
+        if (tipoEquipamentoId == null) {
+            return null;
+        }
+
+        return tipoEquipamentoRepository.findById(tipoEquipamentoId)
+                .orElseThrow(() -> new BusinessException(
+                        HttpStatus.NOT_FOUND,
+                        "Tipo de equipamento não encontrado"
+                ));
     }
 
     private String limparDescricao(String descricao) {
