@@ -10,6 +10,15 @@ public record AlertaExplicacaoResponseDTO(
         List<String> possiveisCausas,
         String riscoOperacional,
         String recomendacaoInicial,
+
+        /*
+         * Texto humanizado gerado pela IA generativa.
+         *
+         * Quando a API externa falhar, este campo recebe uma explicação local
+         * baseada nas regras internas do sistema.
+         */
+        String explicacaoIa,
+
         String observacao
 ) {
 }
