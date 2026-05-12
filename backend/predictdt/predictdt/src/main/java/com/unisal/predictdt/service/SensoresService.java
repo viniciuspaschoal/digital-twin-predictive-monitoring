@@ -17,6 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -29,7 +30,15 @@ public class SensoresService {
     private final TopicoMqttRepository topicoMqttRepository;
     private final GrandezaMedidaRepository grandezaMedidaRepository;
 
-    // Cadastrando Sensor
+    /*
+     * Cadastra um novo sensor.
+     *
+     * O sensor pode estar associado a:
+     * - um tópico MQTT base;
+     * - uma grandeza medida, como CORRENTE, PRESSAO, TEMPERATURA etc.;
+     * - uma unidade efetiva digitada pelo usuário.
+     */
+    @Transactional
     public SensorResponseDTO criarSensor(SensorRequestDTO dto) {
         String descricao = limparDescricao(dto.descricao());
         validarDescricao(descricao);
@@ -38,7 +47,7 @@ public class SensoresService {
          * Busca o tópico base usando o ID recebido no DTO.
          *
          * O tópico é necessário para compor o caminho MQTT completo
-         * utilizado pelo coletor/Python.
+         * utilizado pelo coletor/Python/ESP.
          */
         TopicoMqtt topico = topicoMqttRepository.findById(dto.topicoId())
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Tópico base não encontrado"));
@@ -77,7 +86,13 @@ public class SensoresService {
         return SensorMapper.toResponse(saved);
     }
 
-    // Listar Sensores com Paginação
+    /*
+     * Lista sensores com paginação.
+     *
+     * A transação readOnly mantém o contexto de persistência aberto durante
+     * o mapeamento para DTO, permitindo acessar relações como tópico e grandeza.
+     */
+    @Transactional(readOnly = true)
     public Page<SensorResponseDTO> getSensores(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<Sensor> result = sensorRepository.findAll(pageable);
@@ -89,14 +104,26 @@ public class SensoresService {
         return result.map(SensorMapper::toResponse);
     }
 
-    // Buscar Sensor por ID
+    /*
+     * Busca um sensor por ID.
+     *
+     * Também usa readOnly para permitir que o mapper acesse relações associadas
+     * antes da sessão do Hibernate ser encerrada.
+     */
+    @Transactional(readOnly = true)
     public SensorResponseDTO getSensorById(UUID id) {
         Sensor entity = buscarSensorPorId(id);
 
         return SensorMapper.toResponse(entity);
     }
 
-    // Atualizar Sensor por ID
+    /*
+     * Atualiza um sensor existente.
+     *
+     * Permite alterar descrição, unidade efetiva, tópico auxiliar, status
+     * e grandeza medida.
+     */
+    @Transactional
     public SensorResponseDTO putSensorByID(UUID id, SensorUpdateDTO dto) {
         Sensor entity = buscarSensorPorId(id);
         LocalDateTime now = LocalDateTime.now();
@@ -153,7 +180,10 @@ public class SensoresService {
         return SensorMapper.toResponse(saved);
     }
 
-    // Deletar Sensor
+    /*
+     * Remove um sensor do banco.
+     */
+    @Transactional
     public void deletarSensor(UUID id) {
         Sensor entity = buscarSensorPorId(id);
         sensorRepository.delete(entity);
