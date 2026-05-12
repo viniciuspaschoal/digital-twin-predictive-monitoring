@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public interface SensorBaselineRepository extends JpaRepository<SensorBaseline, UUID> {
 
-    Optional<SensorBaseline> findBySensorIdAndTipoJanelaAndAtivoTrue(
+    Optional<SensorBaseline> findBySensor_IdAndTipoJanelaAndAtivoTrue(
             UUID sensorId,
             TipoJanelaBaseline tipoJanela
     );
