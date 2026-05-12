@@ -14,16 +14,14 @@ import java.util.UUID;
 public class AiExplanationService {
 
     private final AlertaContextoService alertaContextoService;
+    private final GeminiClientService geminiClientService;
 
     /*
-     * Gera uma explicação técnica humanizada para um alerta.
+     * Gera uma explicação humanizada para um alerta.
      *
-     * Neste primeiro momento, a explicação é gerada localmente com base
-     * no contexto estruturado do alerta.
-     *
-     * Futuramente, este service será o ponto ideal para integrar uma API
-     * de IA generativa. A IA receberá o contexto já mastigado e retornará
-     * um texto mais natural para o usuário.
+     * A detecção da anomalia já foi feita antes pelo sistema estatístico.
+     * Aqui apenas transformamos os dados estruturados em uma explicação
+     * mais clara para o usuário final.
      */
     public AlertaExplicacaoResponseDTO gerarExplicacao(UUID alertaId) {
         AlertaContextoResponseDTO contexto = alertaContextoService.montarContexto(alertaId);
@@ -34,6 +32,26 @@ public class AiExplanationService {
         String riscoOperacional = montarRiscoOperacional(contexto);
         String recomendacaoInicial = montarRecomendacaoInicial(contexto);
 
+        String explicacaoIa;
+        String observacao;
+
+        try {
+            String prompt = montarPromptGemini(
+                    contexto,
+                    titulo,
+                    resumo,
+                    possiveisCausas,
+                    riscoOperacional,
+                    recomendacaoInicial
+            );
+
+            explicacaoIa = geminiClientService.gerarTexto(prompt);
+            observacao = "Explicação gerada pela API Gemini com base no contexto estruturado do alerta.";
+        } catch (Exception ex) {
+            explicacaoIa = resumo + " " + riscoOperacional + " " + recomendacaoInicial;
+            observacao = "Gemini indisponível ou não configurado. Explicação local gerada a partir do baseline estatístico e contexto operacional.";
+        }
+
         return new AlertaExplicacaoResponseDTO(
                 contexto.alertaId(),
                 titulo,
@@ -41,8 +59,109 @@ public class AiExplanationService {
                 possiveisCausas,
                 riscoOperacional,
                 recomendacaoInicial,
-                "Explicação gerada a partir de baseline estatístico, contexto do sensor e vínculo com equipamento. Ainda não representa diagnóstico definitivo."
+                explicacaoIa,
+                observacao
         );
+    }
+
+    private String montarPromptGemini(
+            AlertaContextoResponseDTO contexto,
+            String titulo,
+            String resumo,
+            List<String> possiveisCausas,
+            String riscoOperacional,
+            String recomendacaoInicial
+    ) {
+        return """
+                Você é um assistente técnico de manutenção industrial.
+                
+                Explique o alerta abaixo para um operador de forma objetiva, profissional e fácil de entender.
+                
+                Regras:
+                - Não diga que o equipamento certamente vai quebrar.
+                - Não invente dados que não foram informados.
+                - Use termos como "pode indicar", "pode estar relacionado" e "recomenda-se verificar".
+                - A resposta deve ter no máximo 120 palavras.
+                - Finalize a resposta com uma recomendação objetiva.
+                - Não use markdown.
+                
+                Dados do alerta:
+                Título: %s
+                
+                Sensor:
+                - Descrição: %s
+                - Grandeza: %s
+                - Unidade medida: %s
+                - Unidade padrão: %s
+                
+                Equipamentos afetados:
+                %s
+                
+                Anomalia:
+                - Tipo: %s
+                - Severidade: %s
+                - Status: %s
+                - Medida recebida: %s
+                - Média referência: %s
+                - Limite mínimo: %s
+                - Limite máximo: %s
+                - Score de desvio: %s
+                
+                Resumo técnico calculado pelo sistema:
+                %s
+                
+                Possíveis causas levantadas pelo backend:
+                %s
+                
+                Risco operacional calculado:
+                %s
+                
+                Recomendação inicial:
+                %s
+                """.formatted(
+                titulo,
+
+                contexto.sensor().descricao(),
+                contexto.sensor().grandeza(),
+                contexto.sensor().unidadeMedida(),
+                contexto.sensor().unidadePadrao(),
+
+                montarTextoEquipamentos(contexto),
+
+                contexto.anomalia().tipoAnomalia(),
+                contexto.anomalia().severidade(),
+                contexto.anomalia().statusAlerta(),
+                contexto.anomalia().medida(),
+                contexto.anomalia().mediaReferencia(),
+                contexto.anomalia().limiteMinReferencia(),
+                contexto.anomalia().limiteMaxReferencia(),
+                contexto.anomalia().scoreDesvio(),
+
+                resumo,
+                possiveisCausas,
+                riscoOperacional,
+                recomendacaoInicial
+        );
+    }
+
+    private String montarTextoEquipamentos(AlertaContextoResponseDTO contexto) {
+        if (contexto.equipamentosAfetados() == null || contexto.equipamentosAfetados().isEmpty()) {
+            return "- Nenhum equipamento vinculado encontrado.";
+        }
+
+        StringBuilder builder = new StringBuilder();
+
+        for (AlertaContextoResponseDTO.EquipamentoContextoDTO equipamento : contexto.equipamentosAfetados()) {
+            builder.append("- Descrição: ")
+                    .append(equipamento.descricao())
+                    .append(", Tipo: ")
+                    .append(equipamento.tipoEquipamento())
+                    .append(", Relação: ")
+                    .append(equipamento.tipoRelacao())
+                    .append("\n");
+        }
+
+        return builder.toString();
     }
 
     private String montarTitulo(AlertaContextoResponseDTO contexto) {
@@ -78,14 +197,8 @@ public class AiExplanationService {
         String grandeza = contexto.sensor().grandeza();
         String tipoEquipamento = contexto.equipamentosAfetados().isEmpty()
                 ? null
-                : contexto.equipamentosAfetados().getFirst().tipoEquipamento();
+                : contexto.equipamentosAfetados().get(0).tipoEquipamento();
 
-        /*
-         * Essas causas são genéricas e seguras.
-         *
-         * A ideia não é dar diagnóstico definitivo, mas levantar hipóteses
-         * iniciais para orientar o operador/manutenção.
-         */
         causas.add("Mudança operacional fora do comportamento histórico aprendido.");
         causas.add("Leitura anormal do sensor ou condição momentânea de processo.");
 
@@ -145,7 +258,7 @@ public class AiExplanationService {
     private String montarRecomendacaoInicial(AlertaContextoResponseDTO contexto) {
         String equipamento = contexto.equipamentosAfetados().isEmpty()
                 ? "equipamento associado"
-                : contexto.equipamentosAfetados().getFirst().descricao();
+                : contexto.equipamentosAfetados().get(0).descricao();
 
         return "Verifique o " + equipamento
                 + ", confira a condição operacional atual, valide a leitura do sensor e acompanhe se o valor retorna ao intervalo esperado.";
