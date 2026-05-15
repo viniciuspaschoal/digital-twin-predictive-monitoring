@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -26,39 +27,27 @@ public class EquipamentoService {
     private final EquipamentoRepository repository;
     private final TipoEquipamentoRepository tipoEquipamentoRepository;
 
-    // Cadastrando Equipamento
+    /*
+     * Cadastra um novo equipamento.
+     *
+     * O equipamento pode ser associado a um TipoEquipamento, como BOMBA,
+     * MOTOR, TORNO ou COMPRESSOR. Essa associação dá contexto técnico
+     * para os alertas e para a IA generativa.
+     */
+    @Transactional
     public EquipamentoResponseDTO criarEquipamento(EquipamentoRequestDTO dto) {
         String descricao = limparDescricao(dto.descricao());
         validarDescricao(descricao);
 
-        /*
-         * Valida duplicidade pela descrição normalizada.
-         *
-         * Isso evita cadastrar dois equipamentos com o mesmo nome lógico.
-         */
         if (repository.findByDescricao(descricao).isPresent()) {
             throw new BusinessException("Descrição já cadastrada");
         }
 
-        /*
-         * Busca o tipo operacional do equipamento, quando informado.
-         *
-         * O tipo é opcional neste momento para não quebrar cadastros antigos.
-         * Quando informado, ele dá contexto técnico ao equipamento para uso
-         * posterior nos alertas e na IA generativa.
-         */
         TipoEquipamento tipoEquipamento = buscarTipoEquipamentoOpcional(dto.tipoEquipamentoId());
 
-        /*
-         * Converte o DTO em entity já com o contexto operacional.
-         */
         Equipamento entity = EquipamentoMapper.toEntity(dto, tipoEquipamento);
         entity.setDescricao(descricao);
 
-        /*
-         * Se o equipamento for cadastrado como inativo,
-         * registra a data de bloqueio imediatamente.
-         */
         if (dto.ativo() != null && !dto.ativo()) {
             entity.setDtBloqueio(LocalDateTime.now());
         }
@@ -67,7 +56,13 @@ public class EquipamentoService {
         return EquipamentoMapper.toResponse(saved);
     }
 
-    // Buscando tudo da tabela Equipamento
+    /*
+     * Lista equipamentos com paginação.
+     *
+     * A transação readOnly mantém o contexto de persistência aberto durante
+     * o mapeamento para DTO, permitindo acessar o tipoEquipamento associado.
+     */
+    @Transactional(readOnly = true)
     public Page<EquipamentoResponseDTO> getEquipamentos(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<Equipamento> result = repository.findAll(pageable);
@@ -79,29 +74,31 @@ public class EquipamentoService {
         return result.map(EquipamentoMapper::toResponse);
     }
 
-    // Buscando Equipamento por ID
+    /*
+     * Busca equipamento por ID.
+     */
+    @Transactional(readOnly = true)
     public EquipamentoResponseDTO getEquipamentoByID(UUID id) {
         Equipamento entity = buscarEquipamentoPorId(id);
         return EquipamentoMapper.toResponse(entity);
     }
 
-    // Altera equipamento por ID
+    /*
+     * Atualiza dados básicos do equipamento.
+     *
+     * Nesta etapa, o update mantém o comportamento já existente:
+     * atualização de descrição e status.
+     */
+    @Transactional
     public EquipamentoResponseDTO putEquipamentoByID(UUID id, EquipamentoUpdateDTO dto) {
         Equipamento entity = buscarEquipamentoPorId(id);
         LocalDateTime now = LocalDateTime.now();
 
-        /*
-         * Neste momento, o update continua alterando apenas descrição e status.
-         *
-         * A alteração de tipoEquipamento pode ser adicionada depois no
-         * EquipamentoUpdateDTO para manter esta etapa mais segura e incremental.
-         */
         if ((dto.descricao() == null || dto.descricao().equals(entity.getDescricao())) &&
                 (dto.ativo() == null || dto.ativo().equals(entity.getAtivo()))) {
             return EquipamentoMapper.toResponse(entity);
         }
 
-        // Atualiza descrição se fornecida e diferente da atual
         if (dto.descricao() != null && !dto.descricao().equals(entity.getDescricao())) {
             String descricao = limparDescricao(dto.descricao());
             validarDescricao(descricao);
@@ -113,20 +110,21 @@ public class EquipamentoService {
             entity.setDescricao(descricao);
         }
 
-        // Atualiza status e registra/remove data de bloqueio
         if (dto.ativo() != null && !dto.ativo().equals(entity.getAtivo())) {
             entity.setAtivo(dto.ativo());
             entity.setDtBloqueio(!dto.ativo() ? now : null);
         }
 
-        // Registra data de alteração
         entity.setDtAlteracao(now);
 
         Equipamento saved = repository.save(entity);
         return EquipamentoMapper.toResponse(saved);
     }
 
-    // Deleta Equipamento por ID
+    /*
+     * Remove equipamento do banco.
+     */
+    @Transactional
     public void deletarEquipamento(UUID id) {
         Equipamento entity = buscarEquipamentoPorId(id);
         repository.delete(entity);
