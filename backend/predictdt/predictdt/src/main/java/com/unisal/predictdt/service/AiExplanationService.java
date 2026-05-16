@@ -2,8 +2,16 @@ package com.unisal.predictdt.service;
 
 import com.unisal.predictdt.dto.alertaContexto.AlertaContextoResponseDTO;
 import com.unisal.predictdt.dto.alertaExplicacao.AlertaExplicacaoResponseDTO;
+import com.unisal.predictdt.entity.AlertaAnomalia;
+import com.unisal.predictdt.entity.AlertaAnomaliaExplicacao;
+import com.unisal.predictdt.exception.BusinessException;
+import com.unisal.predictdt.mapper.AlertaAnomaliaExplicacaoMapper;
+import com.unisal.predictdt.repository.AlertaAnomaliaExplicacaoRepository;
+import com.unisal.predictdt.repository.AlertaAnomaliaRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,15 +23,51 @@ public class AiExplanationService {
 
     private final AlertaContextoService alertaContextoService;
     private final GeminiClientService geminiClientService;
+    private final AlertaAnomaliaRepository alertaAnomaliaRepository;
+    private final AlertaAnomaliaExplicacaoRepository alertaAnomaliaExplicacaoRepository;
 
     /*
-     * Gera uma explicação humanizada para um alerta.
+     * Retorna uma explicação humanizada para um alerta.
      *
-     * A detecção da anomalia já foi feita antes pelo sistema estatístico.
-     * Aqui apenas transformamos os dados estruturados em uma explicação
-     * mais clara para o usuário final.
+     * Regra principal:
+     * - se a explicação já existir no banco, retorna a explicação persistida;
+     * - se não existir, gera uma nova explicação, salva no banco e retorna.
+     *
+     * Isso evita chamar Gemini repetidamente para o mesmo alerta.
      */
+    @Transactional
     public AlertaExplicacaoResponseDTO gerarExplicacao(UUID alertaId) {
+        return alertaAnomaliaExplicacaoRepository.findByAlertaAnomalia_Id(alertaId)
+                .map(AlertaAnomaliaExplicacaoMapper::toResponse)
+                .orElseGet(() -> gerarSalvarERetornarExplicacao(alertaId));
+    }
+
+    /*
+     * Gera uma explicação nova para o alerta, salva no banco e retorna para o frontend.
+     */
+    private AlertaExplicacaoResponseDTO gerarSalvarERetornarExplicacao(UUID alertaId) {
+        /*
+         * Busca o alerta original.
+         *
+         * A explicação precisa ficar vinculada ao alerta_anomalia.
+         */
+        AlertaAnomalia alerta = alertaAnomaliaRepository.findById(alertaId)
+                .orElseThrow(() -> new BusinessException(
+                        HttpStatus.NOT_FOUND,
+                        "Alerta de anomalia não encontrado"
+                ));
+
+        /*
+         * Monta o contexto técnico estruturado do alerta.
+         *
+         * Esse contexto contém:
+         * - sensor;
+         * - grandeza;
+         * - unidade;
+         * - equipamentos afetados;
+         * - tipo do equipamento;
+         * - dados estatísticos da anomalia.
+         */
         AlertaContextoResponseDTO contexto = alertaContextoService.montarContexto(alertaId);
 
         String titulo = montarTitulo(contexto);
@@ -34,7 +78,13 @@ public class AiExplanationService {
 
         String explicacaoIa;
         String observacao;
+        String origem;
 
+        /*
+         * Tenta gerar a explicação com Gemini.
+         *
+         * Se a API falhar, o sistema usa fallback local para não quebrar o frontend.
+         */
         try {
             String prompt = montarPromptGemini(
                     contexto,
@@ -47,12 +97,17 @@ public class AiExplanationService {
 
             explicacaoIa = geminiClientService.gerarTexto(prompt);
             observacao = "Explicação gerada pela API Gemini com base no contexto estruturado do alerta.";
+            origem = "GEMINI";
         } catch (Exception ex) {
             explicacaoIa = resumo + " " + riscoOperacional + " " + recomendacaoInicial;
             observacao = "Gemini indisponível ou não configurado. Explicação local gerada a partir do baseline estatístico e contexto operacional.";
+            origem = "LOCAL";
         }
 
-        return new AlertaExplicacaoResponseDTO(
+        /*
+         * Monta o DTO que será devolvido para o frontend.
+         */
+        AlertaExplicacaoResponseDTO dto = new AlertaExplicacaoResponseDTO(
                 contexto.alertaId(),
                 titulo,
                 resumo,
@@ -62,8 +117,30 @@ public class AiExplanationService {
                 explicacaoIa,
                 observacao
         );
+
+        /*
+         * Converte o DTO em entity e salva no banco.
+         *
+         * Nas próximas chamadas para o mesmo alerta, a explicação virá do banco.
+         */
+        AlertaAnomaliaExplicacao entity = AlertaAnomaliaExplicacaoMapper.toEntity(
+                alerta,
+                dto,
+                origem
+        );
+
+        alertaAnomaliaExplicacaoRepository.save(entity);
+
+        return dto;
     }
 
+    /*
+     * Monta o prompt enviado ao Gemini.
+     *
+     * O Gemini recebe dados já estruturados pelo backend.
+     * Ele não decide se existe anomalia. A anomalia já foi detectada pela lógica estatística.
+     * A IA apenas humaniza a explicação.
+     */
     private String montarPromptGemini(
             AlertaContextoResponseDTO contexto,
             String titulo,
@@ -144,6 +221,9 @@ public class AiExplanationService {
         );
     }
 
+    /*
+     * Transforma a lista de equipamentos afetados em texto para entrar no prompt.
+     */
     private String montarTextoEquipamentos(AlertaContextoResponseDTO contexto) {
         if (contexto.equipamentosAfetados() == null || contexto.equipamentosAfetados().isEmpty()) {
             return "- Nenhum equipamento vinculado encontrado.";
