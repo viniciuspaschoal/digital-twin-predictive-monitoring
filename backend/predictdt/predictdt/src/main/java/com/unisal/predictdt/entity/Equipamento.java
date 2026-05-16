@@ -27,6 +27,10 @@ public class Equipamento {
     @Column(name = "descricao", nullable = false, length = 100)
     private String descricao;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tipo_equipamento_id")
+    private TipoEquipamento tipoEquipamento;
+
     @Column(name = "ativo", nullable = false)
     private Boolean ativo;
 

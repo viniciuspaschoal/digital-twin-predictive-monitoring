@@ -4,10 +4,12 @@ import com.unisal.predictdt.dto.logMedida.LogMedidaRequestDTO;
 import com.unisal.predictdt.dto.logMedida.LogMedidaResponseDTO;
 import com.unisal.predictdt.entity.LogMedida;
 import com.unisal.predictdt.entity.Sensor;
+import com.unisal.predictdt.event.NovaMedidaEvent;
 import com.unisal.predictdt.mapper.LogMedidaMapper;
 import com.unisal.predictdt.repository.LogMedidaRepository;
 import com.unisal.predictdt.repository.SensorRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,20 +25,39 @@ public class LogMedidaService {
     @Autowired
     private SensorRepository sensorRepository;
 
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     @Transactional // Isso garante que, se der erro no meio, ele não salva nada pela metade
     public LogMedidaResponseDTO salvar(LogMedidaRequestDTO dto){
 
-        // 1. O CONFERENTE: Precisamos do objeto Sensor completo para o Mapper
+        /*
+         * Busca o sensor informado pelo Python.
+         *
+         * A medição só pode ser salva se o sensor existir no banco.
+         * Isso mantém a integridade entre log_medida e sensor.
+         */
         // Buscamos pelo ID que veio do Python (dto.sensorId())
         Sensor sensor = sensorRepository.findById(dto.sensorId())
                 .orElseThrow(() -> new RuntimeException("Erro: Sensor com ID " + dto.sensorId() + " não existe no banco!"));
 
         //Chamamos o Mapper para transformar o DTO em Entity
+        /*
+         * Converte o DTO recebido pela API em uma Entity LogMedida.
+         *
+         * O mapper monta a leitura com:
+         * - id da medição;
+         * - data/hora da medição;
+         * - sensor;
+         * - valor medido.
+         */
         // Passa o pacote (dto) e o sensor que acabaamos de mandar
         LogMedida entity = LogMedidaMapper.toEntity(dto, sensor);
 
         //Salva a entidade no banco de dados
         LogMedida salvar = logMedidaRepository.save(entity);
+
+        eventPublisher.publishEvent(new NovaMedidaEvent(salvar.getId()));
 
         return LogMedidaMapper.toResponse(salvar);
     }
