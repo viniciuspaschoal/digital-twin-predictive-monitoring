@@ -16,3 +16,7 @@ libraries/
 
 .env
 !.env.example
+
+# Local storage for uploaded 3D models
+backend/predictdt/predictdt/storage/
+storage/
