@@ -5,6 +5,7 @@ import com.unisal.predictdt.entity.AlertaAnomalia;
 import com.unisal.predictdt.entity.LogMedida;
 import com.unisal.predictdt.entity.SensorBaseline;
 import com.unisal.predictdt.entity.enums.SeveridadeAlerta;
+import com.unisal.predictdt.entity.enums.StatusAlerta;
 import com.unisal.predictdt.entity.enums.TipoAnomalia;
 import com.unisal.predictdt.entity.enums.TipoJanelaBaseline;
 import com.unisal.predictdt.event.NovaMedidaEvent;
@@ -23,6 +24,8 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.List;
 
 @Slf4j
 @Service
@@ -103,6 +106,31 @@ public class AnomalyDetectionService {
         TipoAnomalia tipoAnomalia = acimaDoPadrao
                 ? TipoAnomalia.ACIMA_DO_PADRAO
                 : TipoAnomalia.ABAIXO_DO_PADRAO;
+
+        /*
+         * Evita criação de alertas duplicados.
+         *
+         * Se já existe um alerta ABERTO ou RECONHECIDO para o mesmo sensor
+         * e o mesmo tipo de anomalia, o sistema entende que aquela condição
+         * já está em acompanhamento e não cria outro alerta igual.
+         */
+        boolean jaExisteAlertaAtivo = alertaAnomaliaRepository
+                .findFirstBySensor_IdAndTipoAnomaliaAndStatusAlertaInOrderByDtOcorrenciaDesc(
+                        logMedida.getSensor().getId(),
+                        tipoAnomalia,
+                        List.of(StatusAlerta.ABERTO, StatusAlerta.RECONHECIDO)
+                )
+                .isPresent();
+
+        if (jaExisteAlertaAtivo) {
+            log.info(
+                    "Já existe alerta ativo para o sensor {} e tipo {}. Novo alerta duplicado não será criado.",
+                    logMedida.getSensor().getId(),
+                    tipoAnomalia
+            );
+
+            return;
+        }
 
         Double scoreDesvio = calcularScoreDesvio(medida, baselineAtivo);
         SeveridadeAlerta severidade = classificarSeveridade(scoreDesvio);
