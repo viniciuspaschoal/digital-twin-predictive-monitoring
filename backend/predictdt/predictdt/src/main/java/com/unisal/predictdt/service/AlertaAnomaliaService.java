@@ -1,14 +1,18 @@
 package com.unisal.predictdt.service;
 
 import com.unisal.predictdt.dto.alertaAnomalia.AlertaAnomaliaResponseDTO;
+import com.unisal.predictdt.entity.AlertaAnomalia;
 import com.unisal.predictdt.entity.enums.StatusAlerta;
+import com.unisal.predictdt.exception.BusinessException;
 import com.unisal.predictdt.mapper.AlertaAnomaliaMapper;
 import com.unisal.predictdt.repository.AlertaAnomaliaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,5 +56,122 @@ public class AlertaAnomaliaService {
                 .stream()
                 .map(AlertaAnomaliaMapper::toResponse)
                 .toList();
+    }
+
+    /*
+     * Marca um alerta como reconhecido.
+     *
+     * Esse status indica que o operador visualizou o alerta,
+     * mas o problema ainda não foi resolvido.
+     */
+    @Transactional
+    public AlertaAnomaliaResponseDTO reconhecer(UUID id) {
+        AlertaAnomalia alerta = buscarAlertaPorId(id);
+
+        if (alerta.getStatusAlerta() == StatusAlerta.RESOLVIDO) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "Não é possível reconhecer um alerta já resolvido"
+            );
+        }
+
+        if (alerta.getStatusAlerta() == StatusAlerta.IGNORADO) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "Não é possível reconhecer um alerta ignorado"
+            );
+        }
+
+        alerta.setStatusAlerta(StatusAlerta.RECONHECIDO);
+        alerta.setDtReconhecimento(OffsetDateTime.now());
+
+        AlertaAnomalia salvo = alertaAnomaliaRepository.save(alerta);
+        return AlertaAnomaliaMapper.toResponse(salvo);
+    }
+
+    /*
+     * Resolve um alerta.
+     *
+     * Esse status remove o alerta da lista de alertas abertos
+     * e indica que a condição foi tratada ou encerrada.
+     */
+    @Transactional
+    public AlertaAnomaliaResponseDTO resolver(UUID id) {
+        AlertaAnomalia alerta = buscarAlertaPorId(id);
+
+        if (alerta.getStatusAlerta() == StatusAlerta.RESOLVIDO) {
+            return AlertaAnomaliaMapper.toResponse(alerta);
+        }
+
+        OffsetDateTime agora = OffsetDateTime.now();
+
+        if (alerta.getDtReconhecimento() == null) {
+            alerta.setDtReconhecimento(agora);
+        }
+
+        alerta.setStatusAlerta(StatusAlerta.RESOLVIDO);
+        alerta.setDtResolucao(agora);
+
+        AlertaAnomalia salvo = alertaAnomaliaRepository.save(alerta);
+        return AlertaAnomaliaMapper.toResponse(salvo);
+    }
+
+    /*
+     * Ignora um alerta.
+     *
+     * Deve ser usado quando o operador entende que aquele alerta
+     * não representa uma condição relevante.
+     */
+    @Transactional
+    public AlertaAnomaliaResponseDTO ignorar(UUID id) {
+        AlertaAnomalia alerta = buscarAlertaPorId(id);
+
+        if (alerta.getStatusAlerta() == StatusAlerta.RESOLVIDO) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "Não é possível ignorar um alerta já resolvido"
+            );
+        }
+
+        alerta.setStatusAlerta(StatusAlerta.IGNORADO);
+
+        AlertaAnomalia salvo = alertaAnomaliaRepository.save(alerta);
+        return AlertaAnomaliaMapper.toResponse(salvo);
+    }
+
+    /*
+     * Resolve todos os alertas abertos.
+     *
+     * Útil para limpeza operacional do ambiente de testes,
+     * principalmente quando muitos alertas foram gerados em sequência.
+     */
+    @Transactional
+    public int resolverTodosAbertos() {
+        List<AlertaAnomalia> alertasAbertos =
+                alertaAnomaliaRepository.findByStatusAlertaOrderByDtOcorrenciaDesc(StatusAlerta.ABERTO);
+
+        OffsetDateTime agora = OffsetDateTime.now();
+
+        alertasAbertos.forEach(alerta -> {
+            alerta.setStatusAlerta(StatusAlerta.RESOLVIDO);
+
+            if (alerta.getDtReconhecimento() == null) {
+                alerta.setDtReconhecimento(agora);
+            }
+
+            alerta.setDtResolucao(agora);
+        });
+
+        alertaAnomaliaRepository.saveAll(alertasAbertos);
+
+        return alertasAbertos.size();
+    }
+
+    private AlertaAnomalia buscarAlertaPorId(UUID id) {
+        return alertaAnomaliaRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(
+                        HttpStatus.NOT_FOUND,
+                        "Alerta de anomalia não encontrado"
+                ));
     }
 }

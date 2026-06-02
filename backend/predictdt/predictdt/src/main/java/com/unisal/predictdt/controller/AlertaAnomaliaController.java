@@ -42,4 +42,46 @@ public class AlertaAnomaliaController {
     ) {
         return ResponseEntity.ok(alertaAnomaliaService.buscarPorEquipamento(equipamentoId));
     }
+
+    /*
+     * Marca o alerta como reconhecido.
+     */
+    @PatchMapping("/{id}/reconhecer")
+    public ResponseEntity<AlertaAnomaliaResponseDTO> reconhecer(
+            @PathVariable UUID id
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.reconhecer(id));
+    }
+
+    /*
+     * Resolve/fecha o alerta.
+     */
+    @PatchMapping("/{id}/resolver")
+    public ResponseEntity<AlertaAnomaliaResponseDTO> resolver(
+            @PathVariable UUID id
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.resolver(id));
+    }
+
+    /*
+     * Ignora o alerta.
+     */
+    @PatchMapping("/{id}/ignorar")
+    public ResponseEntity<AlertaAnomaliaResponseDTO> ignorar(
+            @PathVariable UUID id
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.ignorar(id));
+    }
+
+    /*
+     * Resolve todos os alertas abertos.
+     *
+     * Endpoint útil para limpeza do ambiente de teste.
+     */
+    @PatchMapping("/resolver-abertos")
+    public ResponseEntity<String> resolverTodosAbertos() {
+        int total = alertaAnomaliaService.resolverTodosAbertos();
+
+        return ResponseEntity.ok(total + " alerta(s) aberto(s) resolvido(s) com sucesso");
+    }
 }
