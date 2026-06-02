@@ -1,5 +1,6 @@
 package com.unisal.predictdt.analysis.detection;
 
+import com.unisal.predictdt.dto.alertaAnomalia.AlertaAnomaliaResponseDTO;
 import com.unisal.predictdt.entity.AlertaAnomalia;
 import com.unisal.predictdt.entity.LogMedida;
 import com.unisal.predictdt.entity.SensorBaseline;
@@ -7,9 +8,11 @@ import com.unisal.predictdt.entity.enums.SeveridadeAlerta;
 import com.unisal.predictdt.entity.enums.TipoAnomalia;
 import com.unisal.predictdt.entity.enums.TipoJanelaBaseline;
 import com.unisal.predictdt.event.NovaMedidaEvent;
+import com.unisal.predictdt.mapper.AlertaAnomaliaMapper;
 import com.unisal.predictdt.repository.AlertaAnomaliaRepository;
 import com.unisal.predictdt.repository.LogMedidaRepository;
 import com.unisal.predictdt.repository.SensorBaselineRepository;
+import com.unisal.predictdt.service.AlertaWebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -18,6 +21,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -27,6 +32,7 @@ public class AnomalyDetectionService {
     private final LogMedidaRepository logMedidaRepository;
     private final SensorBaselineRepository sensorBaselineRepository;
     private final AlertaAnomaliaRepository alertaAnomaliaRepository;
+    private final AlertaWebSocketService alertaWebSocketService;
 
     /*
      * Escuta o evento publicado após uma nova medição ser salva.
@@ -37,11 +43,10 @@ public class AnomalyDetectionService {
      * @Async faz com que a análise rode em background, sem bloquear a resposta
      * do endpoint POST /log-medida.
      */
-
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void analisarNovaMedida(NovaMedidaEvent event){
+    public void analisarNovaMedida(NovaMedidaEvent event) {
         log.info(
                 "Iniciando análise de anomalia para medição {} em {}",
                 event.id(),
@@ -57,16 +62,16 @@ public class AnomalyDetectionService {
                 .findBySensor_IdAndTipoJanelaAndAtivoTrue(
                         logMedida.getSensor().getId(),
                         TipoJanelaBaseline.D7
-                ).orElse(null);
+                )
+                .orElse(null);
 
         /*
-         * Neste primeiro momento, se ainda não existir baseline ativo,
-         * apenas registramos no log e não geramos alerta.
+         * Se ainda não existir baseline ativo, a medição não é analisada.
          *
-         * Futuramente, pode gerar um alerta do tipo SEM_BASELINE se fizer
-         * sentido para o dashboard.
+         * Nesse cenário, não há referência estatística confiável para comparar
+         * a nova leitura. Por isso, nenhum alerta é gerado.
          */
-        if (baselineAtivo == null){
+        if (baselineAtivo == null) {
             log.warn(
                     "Não existe baseline ativo D7 para o sensor {}. Medição não analisada.",
                     logMedida.getSensor().getId()
@@ -80,7 +85,11 @@ public class AnomalyDetectionService {
         boolean abaixoDoPadrao = medida < baselineAtivo.getLimiteMin();
         boolean acimaDoPadrao = medida > baselineAtivo.getLimiteMax();
 
-        if (!abaixoDoPadrao && !acimaDoPadrao){
+        /*
+         * Se a medição está dentro dos limites do baseline, o sistema apenas
+         * registra o comportamento normal no log e não envia nada ao frontend.
+         */
+        if (!abaixoDoPadrao && !acimaDoPadrao) {
             log.info(
                     "Medição {} do sensor {} está dentro do baseline D7. Valor: {}",
                     logMedida.getId().getId(),
@@ -106,7 +115,17 @@ public class AnomalyDetectionService {
                 scoreDesvio
         );
 
-        alertaAnomaliaRepository.save(alerta);
+        /*
+         * Salva o alerta no banco.
+         *
+         * A notificação WebSocket só deve acontecer depois que o alerta existir
+         * de fato na base de dados.
+         */
+        AlertaAnomalia alertaSalvo = alertaAnomaliaRepository.save(alerta);
+
+        AlertaAnomaliaResponseDTO alertaDTO = AlertaAnomaliaMapper.toResponse(alertaSalvo);
+
+        notificarFrontendAposCommit(alertaDTO);
 
         log.warn(
                 "Alerta de anomalia gerado. Sensor: {}, medida: {}, limite mínimo: {}, limite máximo: {}, severidade: {}",
@@ -116,6 +135,33 @@ public class AnomalyDetectionService {
                 baselineAtivo.getLimiteMax(),
                 severidade
         );
+    }
+
+    /*
+     * Envia o alerta para o frontend apenas após o commit da transação.
+     *
+     * Isso evita que o frontend receba uma notificação de um alerta que ainda
+     * não foi confirmado no banco de dados.
+     */
+    private void notificarFrontendAposCommit(AlertaAnomaliaResponseDTO alertaDTO) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    alertaWebSocketService.notificarNovoAlerta(alertaDTO);
+                }
+            });
+
+            return;
+        }
+
+        /*
+         * Fallback de segurança.
+         *
+         * Caso o método seja executado sem sincronização transacional ativa,
+         * ainda assim enviamos a notificação.
+         */
+        alertaWebSocketService.notificarNovoAlerta(alertaDTO);
     }
 
     /*
@@ -184,9 +230,10 @@ public class AnomalyDetectionService {
         alerta.setSensor(logMedida.getSensor());
 
         /*
-         * Neste primeiro momento, o alerta fica associado apenas ao sensor.
-         * Depois podemos expandir para gerar alertas por equipamento vinculado
-         * via sensor_equipamento.
+         * Neste momento, o alerta fica associado diretamente ao sensor.
+         *
+         * O contexto por equipamento é montado posteriormente a partir dos
+         * vínculos entre sensor e equipamento.
          */
         alerta.setEquipamento(null);
 
@@ -209,7 +256,13 @@ public class AnomalyDetectionService {
 
         alerta.setDtOcorrencia(logMedida.getId().getDtMedida());
 
-        alerta.setDescricao(montarDescricao(logMedida, baseline, tipoAnomalia, severidade, scoreDesvio));
+        alerta.setDescricao(montarDescricao(
+                logMedida,
+                baseline,
+                tipoAnomalia,
+                severidade,
+                scoreDesvio
+        ));
 
         return alerta;
     }
@@ -238,6 +291,5 @@ public class AnomalyDetectionService {
                 + ". Severidade: "
                 + severidade
                 + ".";
-
     }
 }
