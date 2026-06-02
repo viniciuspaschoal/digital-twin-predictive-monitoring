@@ -7,6 +7,9 @@ import com.unisal.predictdt.exception.BusinessException;
 import com.unisal.predictdt.mapper.AlertaAnomaliaMapper;
 import com.unisal.predictdt.repository.AlertaAnomaliaRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -58,12 +61,58 @@ public class AlertaAnomaliaService {
                 .toList();
     }
 
-    /*
-     * Marca um alerta como reconhecido.
-     *
-     * Esse status indica que o operador visualizou o alerta,
-     * mas o problema ainda não foi resolvido.
-     */
+    @Transactional(readOnly = true)
+    public Page<AlertaAnomaliaResponseDTO> listarTodosPaginado(int page, int size) {
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "dtOcorrencia")
+        );
+
+        return alertaAnomaliaRepository
+                .findAll(pageable)
+                .map(AlertaAnomaliaMapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AlertaAnomaliaResponseDTO> buscarPorStatusPaginado(
+            StatusAlerta status,
+            int page,
+            int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        return alertaAnomaliaRepository
+                .findByStatusAlertaOrderByDtOcorrenciaDesc(status, pageable)
+                .map(AlertaAnomaliaMapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AlertaAnomaliaResponseDTO> buscarPorSensorPaginado(
+            UUID sensorId,
+            int page,
+            int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        return alertaAnomaliaRepository
+                .findBySensor_IdOrderByDtOcorrenciaDesc(sensorId, pageable)
+                .map(AlertaAnomaliaMapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AlertaAnomaliaResponseDTO> buscarPorEquipamentoPaginado(
+            UUID equipamentoId,
+            int page,
+            int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        return alertaAnomaliaRepository
+                .findByEquipamento_IdOrderByDtOcorrenciaDesc(equipamentoId, pageable)
+                .map(AlertaAnomaliaMapper::toResponse);
+    }
+
     @Transactional
     public AlertaAnomaliaResponseDTO reconhecer(UUID id) {
         AlertaAnomalia alerta = buscarAlertaPorId(id);
@@ -89,12 +138,6 @@ public class AlertaAnomaliaService {
         return AlertaAnomaliaMapper.toResponse(salvo);
     }
 
-    /*
-     * Resolve um alerta.
-     *
-     * Esse status remove o alerta da lista de alertas abertos
-     * e indica que a condição foi tratada ou encerrada.
-     */
     @Transactional
     public AlertaAnomaliaResponseDTO resolver(UUID id) {
         AlertaAnomalia alerta = buscarAlertaPorId(id);
@@ -116,12 +159,6 @@ public class AlertaAnomaliaService {
         return AlertaAnomaliaMapper.toResponse(salvo);
     }
 
-    /*
-     * Ignora um alerta.
-     *
-     * Deve ser usado quando o operador entende que aquele alerta
-     * não representa uma condição relevante.
-     */
     @Transactional
     public AlertaAnomaliaResponseDTO ignorar(UUID id) {
         AlertaAnomalia alerta = buscarAlertaPorId(id);
@@ -139,12 +176,6 @@ public class AlertaAnomaliaService {
         return AlertaAnomaliaMapper.toResponse(salvo);
     }
 
-    /*
-     * Resolve todos os alertas abertos.
-     *
-     * Útil para limpeza operacional do ambiente de testes,
-     * principalmente quando muitos alertas foram gerados em sequência.
-     */
     @Transactional
     public int resolverTodosAbertos() {
         List<AlertaAnomalia> alertasAbertos =

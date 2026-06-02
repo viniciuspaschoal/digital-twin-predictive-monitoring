@@ -4,6 +4,7 @@ import com.unisal.predictdt.dto.alertaAnomalia.AlertaAnomaliaResponseDTO;
 import com.unisal.predictdt.entity.enums.StatusAlerta;
 import com.unisal.predictdt.service.AlertaAnomaliaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,11 +23,28 @@ public class AlertaAnomaliaController {
         return ResponseEntity.ok(alertaAnomaliaService.listarTodos());
     }
 
+    @GetMapping("/paginado")
+    public ResponseEntity<Page<AlertaAnomaliaResponseDTO>> listarTodosPaginado(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.listarTodosPaginado(page, size));
+    }
+
     @GetMapping("/status/{status}")
     public ResponseEntity<List<AlertaAnomaliaResponseDTO>> buscarPorStatus(
             @PathVariable StatusAlerta status
     ) {
         return ResponseEntity.ok(alertaAnomaliaService.buscarPorStatus(status));
+    }
+
+    @GetMapping("/status/{status}/paginado")
+    public ResponseEntity<Page<AlertaAnomaliaResponseDTO>> buscarPorStatusPaginado(
+            @PathVariable StatusAlerta status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.buscarPorStatusPaginado(status, page, size));
     }
 
     @GetMapping("/sensor/{sensorId}")
@@ -36,6 +54,15 @@ public class AlertaAnomaliaController {
         return ResponseEntity.ok(alertaAnomaliaService.buscarPorSensor(sensorId));
     }
 
+    @GetMapping("/sensor/{sensorId}/paginado")
+    public ResponseEntity<Page<AlertaAnomaliaResponseDTO>> buscarPorSensorPaginado(
+            @PathVariable UUID sensorId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.buscarPorSensorPaginado(sensorId, page, size));
+    }
+
     @GetMapping("/equipamento/{equipamentoId}")
     public ResponseEntity<List<AlertaAnomaliaResponseDTO>> buscarPorEquipamento(
             @PathVariable UUID equipamentoId
@@ -43,9 +70,15 @@ public class AlertaAnomaliaController {
         return ResponseEntity.ok(alertaAnomaliaService.buscarPorEquipamento(equipamentoId));
     }
 
-    /*
-     * Marca o alerta como reconhecido.
-     */
+    @GetMapping("/equipamento/{equipamentoId}/paginado")
+    public ResponseEntity<Page<AlertaAnomaliaResponseDTO>> buscarPorEquipamentoPaginado(
+            @PathVariable UUID equipamentoId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(alertaAnomaliaService.buscarPorEquipamentoPaginado(equipamentoId, page, size));
+    }
+
     @PatchMapping("/{id}/reconhecer")
     public ResponseEntity<AlertaAnomaliaResponseDTO> reconhecer(
             @PathVariable UUID id
@@ -53,9 +86,6 @@ public class AlertaAnomaliaController {
         return ResponseEntity.ok(alertaAnomaliaService.reconhecer(id));
     }
 
-    /*
-     * Resolve/fecha o alerta.
-     */
     @PatchMapping("/{id}/resolver")
     public ResponseEntity<AlertaAnomaliaResponseDTO> resolver(
             @PathVariable UUID id
@@ -63,9 +93,6 @@ public class AlertaAnomaliaController {
         return ResponseEntity.ok(alertaAnomaliaService.resolver(id));
     }
 
-    /*
-     * Ignora o alerta.
-     */
     @PatchMapping("/{id}/ignorar")
     public ResponseEntity<AlertaAnomaliaResponseDTO> ignorar(
             @PathVariable UUID id
@@ -73,11 +100,6 @@ public class AlertaAnomaliaController {
         return ResponseEntity.ok(alertaAnomaliaService.ignorar(id));
     }
 
-    /*
-     * Resolve todos os alertas abertos.
-     *
-     * Endpoint útil para limpeza do ambiente de teste.
-     */
     @PatchMapping("/resolver-abertos")
     public ResponseEntity<String> resolverTodosAbertos() {
         int total = alertaAnomaliaService.resolverTodosAbertos();
